@@ -12,7 +12,7 @@ their implementation uses.
 The `nb_hashtbl` module provides destructive ("non-backtrackable") hash
 tables:
 
-    :- use_module('../hashtbl/prolog/nb_hashtbl').
+    :- use_module(library(nb_hashtbl)).
     ?- empty_nb_hashtbl(T),
        nb_hashtbl_set(T, x, 1),
        nb_hashtbl_set(T, y, 2),
@@ -53,6 +53,7 @@ Both variants provide higher-order `map`, `fold`, and `iter` operations:
 
     hashtbl_sum(_Key, Value, Accumulator, Result) :-
         Result is Value + Accumulator.
+
     ?- list_to_p_hashtbl([x-3, y-2, z-1], T),
        p_hashtbl_fold(T, hashtbl_sum, 0, Sum).
     T = ...,
