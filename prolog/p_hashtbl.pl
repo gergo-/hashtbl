@@ -73,22 +73,15 @@ copy_term_idx_arg(Term, Idx, Arg, Copy) :-
 %  Auxiliary predicate for copy_term_idx_arg/4. Unifies arguments J to N of
 %  Copy with the corresponding arguments of Term, except that it unifies
 %  argument Idx with Arg.
-copy_arg_except(_, J, N, _, _, _) :-
-    J > N,
-    !.
 copy_arg_except(Term, J, N, I, Arg, Copy) :-
-    J = I,
-    !,
-    arg(I, Copy, Arg),
-    J1 is J + 1,
-    copy_arg_except(Term, J1, N, I, Arg, Copy).
-copy_arg_except(Term, J, N, I, Arg, Copy) :-
-    J =< N,
-    J \= I,
-    arg(J, Term, A),
-    arg(J, Copy, A),
-    J1 is J + 1,
-    copy_arg_except(Term, J1, N, I, Arg, Copy).
+    (   J =< N
+    ->  (   J = I
+        ->  arg(I, Copy, Arg)
+        ;   arg(J, Term, A),
+            arg(J, Copy, A) ),
+        J1 is J + 1,
+        copy_arg_except(Term, J1, N, I, Arg, Copy)
+    ;   true ).
 
 %! p_hashtbl_put(+Table, +Key, +Value, -TableOut) is det
 %
