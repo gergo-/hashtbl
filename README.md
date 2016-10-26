@@ -81,11 +81,17 @@ version once randomization is implemented. If you want to serialize a hash
 table for I/O, you should convert it to a list first and then convert the
 list back to a hash table.
 
+The non-backtrackable hash tables are resized automatically when their load
+exceeds a certain threshold.
+
 ## TODOs
 
-The implementations here are quite naive, and a bad choice of the number of
-buckets leads to terrible performance. Some form of dynamic resizing of the
-tables should be implemented.
+The implementation of the pure hash tables is quite naive, and a bad choice
+of the number of buckets leads to terrible performance. However, dynamic
+resizing as for the non-backtrackable hash tables performs even worse
+because hash tables with more buckets become more expensive to copy every
+time an element is inserted. Some sort of hierarchical system is needed to
+solve this.
 
 All the predicates should check that their hash table arguments are indeed
 instantiated to hash tables and throw appropriate instantiation errors.
