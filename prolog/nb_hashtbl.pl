@@ -59,7 +59,7 @@ empty_nb_hashtbl(Table) :-
 %
 %  @throws Type or domain error if Size is not a non-negative integer.
 empty_nb_hashtbl(Table, Size) :-
-    Table = nb_hashtbl([], BucketTerm),
+    Table = nb_hashtbl(meta(0), BucketTerm),
     functor(BucketTerm, buckets, Size),
     term_variables(BucketTerm, Buckets),
     maplist(=([]), Buckets).
@@ -70,11 +70,15 @@ empty_nb_hashtbl(Table, Size) :-
 %  for Key, this new value will shadow them until it is deleted from the
 %  table.
 nb_hashtbl_put(Table, Key, Value) :-
+    hashtbl_load(Table, Load),
     hashtbl_bucket(Table, Key, BucketTerm, BucketIdx, Bucket),
     (   member(KeyValues, Bucket),
         KeyValues = Key-Values
-    ->  nb_linkarg(2, KeyValues, [Value|Values])
-    ;   nb_linkarg(BucketIdx, BucketTerm, [Key-[Value]|Bucket]) ).
+    ->  nb_linkarg(2, KeyValues, [Value|Values]),
+        Load1 = Load
+    ;   nb_linkarg(BucketIdx, BucketTerm, [Key-[Value]|Bucket]),
+        Load1 is Load + 1 ),
+    nb_hashtbl_maybe_resize(Table, Load1).
 
 %! nb_hashtbl_set(!Table, +Key, +Value) is det
 %
@@ -83,13 +87,17 @@ nb_hashtbl_put(Table, Key, Value) :-
 %  entry shadowed earlier entries for Key, those remain shadowed and
 %  unchanged.
 nb_hashtbl_set(Table, Key, Value) :-
+    hashtbl_load(Table, Load),
     hashtbl_bucket(Table, Key, BucketTerm, BucketIdx, Bucket),
     (   KeyValues = Key-Values,
         memberchk(KeyValues, Bucket)
     ->  (   Values = [_OldValue|_]
         ->  nb_linkarg(1, Values, Value)
-        ;   assertion(Values = [_|_]) )
-    ;   nb_linkarg(BucketIdx, BucketTerm, [Key-[Value]|Bucket]) ).
+        ;   assertion(Values = [_|_]) ),
+        Load1 = Load
+    ;   nb_linkarg(BucketIdx, BucketTerm, [Key-[Value]|Bucket]),
+        Load1 is Load + 1 ),
+    nb_hashtbl_maybe_resize(Table, Load1).
 
 %! nb_hashtbl_get(+Table, +Key, -Value) is semidet
 %
@@ -115,26 +123,72 @@ nb_hashtbl_get_all(Table, Key, Value) :-
 %  value as in nb_hashtbl_get/3. Otherwise, unifies Value with Default and
 %  adds this value to the Table under Key.
 nb_hashtbl_get_default(Table, Key, Default, Value) :-
+    hashtbl_load(Table, Load),
     hashtbl_bucket(Table, Key, BucketTerm, BucketIdx, Bucket),
     (   memberchk(Key-[Value|_], Bucket)
-    ->  true
+    ->  Load1 = Load
     ;   Value = Default,
-        nb_linkarg(BucketIdx, BucketTerm, [Key-[Value]|Bucket]) ).
+        nb_linkarg(BucketIdx, BucketTerm, [Key-[Value]|Bucket]),
+        Load1 is Load + 1 ),
+    nb_hashtbl_maybe_resize(Table, Load1).
 
 %! nb_hashtbl_delete(!Table, +Key) is det
 %
 %  Deletes the most recent value stored under Key in Table, if any. Does
 %  nothing otherwise; succeeds always.
 nb_hashtbl_delete(Table, Key) :-
+    hashtbl_load(Table, Load),
     hashtbl_bucket(Table, Key, BucketTerm, BucketIdx, Bucket),
     (   member(KeyValues, Bucket),
         KeyValues = Key-Values
     ->  (   Values = [_Old, Next | Rest]
-        ->  nb_linkarg(2, KeyValues, [Next|Rest])
+        ->  nb_linkarg(2, KeyValues, [Next|Rest]),
+            Load1 = Load
         ;   select(Key-_Values, Bucket, BucketRest)
-        ->  nb_linkarg(BucketIdx, BucketTerm, BucketRest)
+        ->  nb_linkarg(BucketIdx, BucketTerm, BucketRest),
+            Load1 is Load - 1
         ;   assertion(select(Key-_Values, Bucket, _BucketRest)) )
+    ;   Load1 = Load ),
+    nb_hashtbl_maybe_resize(Table, Load1).
+
+%! nb_hashtbl_maybe_resize(!Table, +Load) is det
+%
+%  Set the Table's stored load to the new value of Load. If the new load is
+%  too high, destructively increase the capacity of the hash table (i.e.,
+%  the number of buckets). All hash table entries are retained.
+%  The load is deemed too high if Load / Capacity is greater than 1. The new
+%  capacity is Capacity * 2 + 1. This ensures that if the old capacity was
+%  of the form 2**N - 1, then the new one is 2**(N+1) - 1.
+nb_hashtbl_maybe_resize(Table, Load) :-
+    % First, adjust the table's load.
+    arg(1, Table, Metadata),
+    nb_linkarg(1, Metadata, Load),
+    % Then, check if the load is too high, and resize the table if needed.
+    hashtbl_buckets(Table, Capacity),
+    LoadFactor is Load / Capacity,
+    (   LoadFactor > 1
+    ->  Capacity1 is Capacity * 2 + 1,
+        nb_hashtbl_resize(Table, Capacity1)
     ;   true ).
+
+%! nb_hashtbl_resize(!Table, +Capacity) is det
+%
+%  Table is resized to the given Capacity (number of buckets), retaining all
+%  entries.
+nb_hashtbl_resize(Table, Capacity) :-
+    empty_nb_hashtbl(Table1, Capacity),
+    arg(2, Table, BucketTerm),
+    % Add all Key-Values pairs from Table to Table1.
+    \+ (
+        arg(_I, BucketTerm, Bucket),
+        member(Key-Values, Bucket),
+        hashtbl_bucket(Table1, Key, BucketTerm1, BucketIdx1, Bucket1),
+        nb_linkarg(BucketIdx1, BucketTerm1, [Key-Values|Bucket1]),
+        false
+    ),
+    % Replace Table's buckets by Table1's buckets, and we're done.
+    arg(2, Table1, BucketTerm1),
+    nb_linkarg(2, Table, BucketTerm1).
 
 %! nb_hashtbl_enumerate(+Table, -Key, -Value) is nondet
 %
@@ -364,5 +418,18 @@ test(destructive_backtrack, [
     ;   nb_getval(nb_hashtbl_test_var, T2),
         nb_hashtbl_get(T2, a, B),
         nb_hashtbl_get(T2, c, D) ).
+
+test(no_resize, [FinalBuckets == 1]) :-
+    empty_nb_hashtbl(T, 1),
+    nb_hashtbl_put(T, x, 1),
+    nb_hashtbl_put(T, x, 2),
+    nb_hashtbl_set(T, x, 3),
+    hashtbl_buckets(T, FinalBuckets).
+
+test(resize, [FinalBuckets == 3]) :-
+    empty_nb_hashtbl(T, 1),
+    nb_hashtbl_put(T, x, 1),
+    nb_hashtbl_put(T, y, 2),
+    hashtbl_buckets(T, FinalBuckets).
 
 :- end_tests(nb_hashtbl).

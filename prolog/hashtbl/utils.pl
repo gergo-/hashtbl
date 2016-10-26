@@ -8,6 +8,8 @@
 :- module(utils, [
     hashtbl_default_size/1,
     hashtbl_bucket/5,
+    hashtbl_load/2,
+    hashtbl_buckets/2,
     hashtbl_get/3,
     hashtbl_get_all/3,
     hashtbl_enumerate/3,
@@ -22,7 +24,7 @@
 
 Both variants of the hashtbl library share a common data representation: A
 hash table is a term nb_hashtbl/2 or p_hashtbl/2. The first argument
-contains metadata such as the hash table's current size. The second is a
+contains metadata such as the hash table's current load. The second is a
 term bucket/N containing the hash buckets. Hash buckets are lists of
 Key-Values pairs where Key is a hash table key (a ground term) and Values is
 the list of Values associated with that key. Each key only occurs once in
@@ -64,6 +66,19 @@ hashtbl_bucket(Table, Key, BucketTerm, BucketIdx, Bucket) :-
     term_hash(Key, Hash),
     BucketIdx is Hash rem Buckets + 1,
     arg(BucketIdx, BucketTerm, Bucket).
+
+%! hashtbl_load(+Table, -Load) is det
+%
+%  Load is the current number of keys stored in Table.
+hashtbl_load(Table, Load) :-
+    arg(1, Table, meta(Load)).
+
+%! hashtbl_buckets(+Table, -Buckets) is det
+%
+%  Buckets is the number of hash buckets in Table.
+hashtbl_buckets(Table, Buckets) :-
+    arg(2, Table, BucketTerm),
+    functor(BucketTerm, buckets, Buckets).
 
 %! hashtbl_get(+Table, +Key, -Value) is semidet
 %
