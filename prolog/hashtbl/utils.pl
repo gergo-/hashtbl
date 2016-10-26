@@ -7,7 +7,7 @@
 
 :- module(utils, [
     hashtbl_default_size/1,
-    hashtbl_bucket/4,
+    hashtbl_bucket/5,
     hashtbl_get/3,
     hashtbl_get_all/3,
     hashtbl_enumerate/3,
@@ -21,12 +21,14 @@
 /** <module> Common utilities of the hashtbl library
 
 Both variants of the hashtbl library share a common data representation: A
-hash table is a term nb_hashtbl/N or p_hashtbl/N. Each argument is a hash
-bucket. Hash buckets are lists of Key-Values pairs where Key is a hash table
-key (a ground term) and Values is the list of Values associated with that
-key. Each key only occurs once in the table. When several values are added
-for the same key, later ones come before the older ones in the Values list.
-They have "higher priority" and are said to "shadow" the older values.
+hash table is a term nb_hashtbl/2 or p_hashtbl/2. The first argument
+contains metadata such as the hash table's current size. The second is a
+term bucket/N containing the hash buckets. Hash buckets are lists of
+Key-Values pairs where Key is a hash table key (a ground term) and Values is
+the list of Values associated with that key. Each key only occurs once in
+the table. When several values are added for the same key, later ones come
+before the older ones in the Values list. They have "higher priority" and
+are said to "shadow" the older values.
 
 Due to this common representation of hash tables, many operations are
 identical on the two variants, differing only in the outermost functor.
@@ -49,17 +51,19 @@ concrete hash table modules.
 %  N is the default number of buckets in a newly created hash table.
 hashtbl_default_size(31).
 
-%! hashtbl_bucket(+Table, +Key, -BucketIdx, -Bucket) is det
+%! hashtbl_bucket(+Table, +Key, -BucketTerm, -BucketIdx, -Bucket) is det
 %
-%  Finds the hash bucket in Table for the given Key. If Key is in the table,
-%  BucketIdx is the argument index (as for arg/3) of that hash bucket in the
-%  Table term. Bucket is the corresponding hash bucket. Always succeeds,
+%  Finds the hash bucket in Table for the given Key. BucketTerm is the
+%  Table's term holding the hash buckets, BucketIdx is the argument index
+%  into the BucketTerm (as for arg/3) of the hash bucket corresponding to
+%  the Key, and Bucket is the corresponding hash bucket. Always succeeds,
 %  even if Key is not in the Table.
-hashtbl_bucket(Table, Key, BucketIdx, Bucket) :-
-    functor(Table, _Hashtbl, Buckets),
+hashtbl_bucket(Table, Key, BucketTerm, BucketIdx, Bucket) :-
+    arg(2, Table, BucketTerm),
+    functor(BucketTerm, buckets, Buckets),
     term_hash(Key, Hash),
     BucketIdx is Hash rem Buckets + 1,
-    arg(BucketIdx, Table, Bucket).
+    arg(BucketIdx, BucketTerm, Bucket).
 
 %! hashtbl_get(+Table, +Key, -Value) is semidet
 %
@@ -68,7 +72,7 @@ hashtbl_bucket(Table, Key, BucketIdx, Bucket) :-
 %  checks, use =|nb_hashtbl_get(Table, Key, _)|= to test whether Key is
 %  present in Table.
 hashtbl_get(Table, Key, Value) :-
-    hashtbl_bucket(Table, Key, _BucketIdx, Bucket),
+    hashtbl_bucket(Table, Key, _BucketTerm, _BucketIdx, Bucket),
     memberchk(Key-[Value|_], Bucket).
 
 %! hashtbl_get_all(+Table, +Key, -Value) is nondet
@@ -78,7 +82,7 @@ hashtbl_get(Table, Key, Value) :-
 %  most recently added value for Key first (the same as the solution for
 %  nb_hashtbl_get/3), then shadowed ones.
 hashtbl_get_all(Table, Key, Value) :-
-    hashtbl_bucket(Table, Key, _BucketIdx, Bucket),
+    hashtbl_bucket(Table, Key, _BucketTerm, _BucketIdx, Bucket),
     member(Key-Values, Bucket),
     member(Value, Values).
 
@@ -92,8 +96,8 @@ hashtbl_get_all(Table, Key, Value) :-
 %  If Key is ground, this behaves like hashtbl_get_all/3 for that Key.
 %  However, hashtbl_get_all/3 is more efficient in this case.
 hashtbl_enumerate(Table, Key, Value) :-
-    functor(Table, _Hashtbl, _),
-    arg(_Idx, Table, Bucket),
+    arg(2, Table, BucketTerm),
+    arg(_Idx, BucketTerm, Bucket),
     member(Key-Values, Bucket),
     member(Value, Values).
 
@@ -127,9 +131,12 @@ hashtbl_call_map_goal(Goal, K-Values, K-Values1) :-
 %  hashtbl_map/3 enumerates several TableOut tables accordingly.
 :- meta_predicate hashtbl_map(+, 3, *).
 hashtbl_map(Table, Goal, TableOut) :-
-    Table =.. [Hashtbl | Buckets],
+    Table =.. [Hashtbl, Metadata, BucketTerm],
+    BucketTerm =.. [buckets | Buckets],
     maplist(maplist(hashtbl_call_map_goal(Goal)), Buckets, BucketsOut),
-    TableOut =.. [Hashtbl | BucketsOut].
+    BucketTermOut =.. [buckets | BucketsOut],
+    functor(TableOut, Hashtbl, 2),
+    TableOut =.. [Hashtbl, Metadata, BucketTermOut].
 
 %! hashtbl_call_fold_goal(:Goal, +KVs, +Acc, -Result) is nondet
 %
@@ -148,7 +155,8 @@ hashtbl_call_fold_goal(Goal, K-Values, Acc, Result) :-
 %  several results accordingly.
 :- meta_predicate hashtbl_fold(+, 4, +, *).
 hashtbl_fold(Table, Goal, Acc, Result) :-
-    Table =.. [_Hashtbl | Buckets],
+    arg(2, Table, BucketTerm),
+    BucketTerm =.. [buckets | Buckets],
     foldl(foldl(hashtbl_call_fold_goal(Goal)), Buckets, Acc, Result).
 
 %! hashtbl_call_iter_goal(:Goal, +KVs) is nondet
@@ -166,7 +174,8 @@ hashtbl_call_iter_goal(Goal, K-Values) :-
 %  Goal's side effects. Deterministic if Goal is deterministic.
 :- meta_predicate hashtbl_iter(+, 2).
 hashtbl_iter(Table, Goal) :-
-    Table =.. [_Hashtbl | Buckets],
+    arg(2, Table, BucketTerm),
+    BucketTerm =.. [buckets | Buckets],
     maplist(maplist(hashtbl_call_iter_goal(Goal)), Buckets).
 
 

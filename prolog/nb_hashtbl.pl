@@ -59,8 +59,9 @@ empty_nb_hashtbl(Table) :-
 %
 %  @throws Type or domain error if Size is not a non-negative integer.
 empty_nb_hashtbl(Table, Size) :-
-    functor(Table, nb_hashtbl, Size),
-    term_variables(Table, Buckets),
+    Table = nb_hashtbl([], BucketTerm),
+    functor(BucketTerm, buckets, Size),
+    term_variables(BucketTerm, Buckets),
     maplist(=([]), Buckets).
 
 %! nb_hashtbl_put(!Table, +Key, +Value) is det
@@ -69,11 +70,11 @@ empty_nb_hashtbl(Table, Size) :-
 %  for Key, this new value will shadow them until it is deleted from the
 %  table.
 nb_hashtbl_put(Table, Key, Value) :-
-    hashtbl_bucket(Table, Key, BucketIdx, Bucket),
+    hashtbl_bucket(Table, Key, BucketTerm, BucketIdx, Bucket),
     (   member(KeyValues, Bucket),
         KeyValues = Key-Values
     ->  nb_linkarg(2, KeyValues, [Value|Values])
-    ;   nb_linkarg(BucketIdx, Table, [Key-[Value]|Bucket]) ).
+    ;   nb_linkarg(BucketIdx, BucketTerm, [Key-[Value]|Bucket]) ).
 
 %! nb_hashtbl_set(!Table, +Key, +Value) is det
 %
@@ -82,13 +83,13 @@ nb_hashtbl_put(Table, Key, Value) :-
 %  entry shadowed earlier entries for Key, those remain shadowed and
 %  unchanged.
 nb_hashtbl_set(Table, Key, Value) :-
-    hashtbl_bucket(Table, Key, BucketIdx, Bucket),
+    hashtbl_bucket(Table, Key, BucketTerm, BucketIdx, Bucket),
     (   KeyValues = Key-Values,
         memberchk(KeyValues, Bucket)
     ->  (   Values = [_OldValue|_]
         ->  nb_linkarg(1, Values, Value)
         ;   assertion(Values = [_|_]) )
-    ;   nb_linkarg(BucketIdx, Table, [Key-[Value]|Bucket]) ).
+    ;   nb_linkarg(BucketIdx, BucketTerm, [Key-[Value]|Bucket]) ).
 
 %! nb_hashtbl_get(+Table, +Key, -Value) is semidet
 %
@@ -114,24 +115,24 @@ nb_hashtbl_get_all(Table, Key, Value) :-
 %  value as in nb_hashtbl_get/3. Otherwise, unifies Value with Default and
 %  adds this value to the Table under Key.
 nb_hashtbl_get_default(Table, Key, Default, Value) :-
-    hashtbl_bucket(Table, Key, BucketIdx, Bucket),
+    hashtbl_bucket(Table, Key, BucketTerm, BucketIdx, Bucket),
     (   memberchk(Key-[Value|_], Bucket)
     ->  true
     ;   Value = Default,
-        nb_linkarg(BucketIdx, Table, [Key-[Value]|Bucket]) ).
+        nb_linkarg(BucketIdx, BucketTerm, [Key-[Value]|Bucket]) ).
 
 %! nb_hashtbl_delete(!Table, +Key) is det
 %
 %  Deletes the most recent value stored under Key in Table, if any. Does
 %  nothing otherwise; succeeds always.
 nb_hashtbl_delete(Table, Key) :-
-    hashtbl_bucket(Table, Key, BucketIdx, Bucket),
+    hashtbl_bucket(Table, Key, BucketTerm, BucketIdx, Bucket),
     (   member(KeyValues, Bucket),
         KeyValues = Key-Values
     ->  (   Values = [_Old, Next | Rest]
         ->  nb_linkarg(2, KeyValues, [Next|Rest])
         ;   select(Key-_Values, Bucket, BucketRest)
-        ->  nb_linkarg(BucketIdx, Table, BucketRest)
+        ->  nb_linkarg(BucketIdx, BucketTerm, BucketRest)
         ;   assertion(select(Key-_Values, Bucket, _BucketRest)) )
     ;   true ).
 

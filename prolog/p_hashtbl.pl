@@ -53,8 +53,9 @@ empty_p_hashtbl(Table) :-
 %
 %  @throws Type or domain error if Size is not a non-negative integer.
 empty_p_hashtbl(Table, Size) :-
-    functor(Table, p_hashtbl, Size),
-    term_variables(Table, Buckets),
+    Table = p_hashtbl([], BucketTerm),
+    functor(BucketTerm, buckets, Size),
+    term_variables(BucketTerm, Buckets),
     maplist(=([]), Buckets).
 
 %! copy_term_idx_arg(+Term, +Idx, +Arg, -Copy) is det
@@ -95,11 +96,12 @@ copy_arg_except(Term, J, N, I, Arg, Copy) :-
 %  mapped to Value. If Key is already mapped to some values in Table, those
 %  mappings are present but shadowed by Value in TableOut.
 p_hashtbl_put(Table, Key, Value, Table1) :-
-    hashtbl_bucket(Table, Key, BucketIdx, Bucket),
+    hashtbl_bucket(Table, Key, BucketTerm, BucketIdx, Bucket),
     (   selectchk(Key-Values, Bucket, Key-Values1, Bucket1)
     ->  Values1 = [Value|Values]
     ;   Bucket1 = [Key-[Value]|Bucket] ),
-    copy_term_idx_arg(Table, BucketIdx, Bucket1, Table1).
+    copy_term_idx_arg(BucketTerm, BucketIdx, Bucket1, BucketTerm1),
+    copy_term_idx_arg(Table, 2, BucketTerm1, Table1).
 
 %! p_hashtbl_set(+Table, +Key, +Value, -TableOut) is det
 %
@@ -108,11 +110,12 @@ p_hashtbl_put(Table, Key, Value, Table1) :-
 %  most recent one of those is replaced by Value. Other values for Key
 %  remain shadowed in TableOut.
 p_hashtbl_set(Table, Key, Value, Table1) :-
-    hashtbl_bucket(Table, Key, BucketIdx, Bucket),
+    hashtbl_bucket(Table, Key, BucketTerm, BucketIdx, Bucket),
     (   selectchk(Key-[_Old|Rest], Bucket, Key-[Value|Rest], Bucket1)
     ->  true
     ;   Bucket1 = [Key-[Value]|Bucket] ),
-    copy_term_idx_arg(Table, BucketIdx, Bucket1, Table1).
+    copy_term_idx_arg(BucketTerm, BucketIdx, Bucket1, BucketTerm1),
+    copy_term_idx_arg(Table, 2, BucketTerm1, Table1).
 
 %! p_hashtbl_get(+Table, +Key, -Value) is semidet
 %
@@ -139,25 +142,27 @@ p_hashtbl_get_all(Table, Key, Value) :-
 %  Value with Default and adds this value to the Table under Key (as by
 %  p_hashtbl_put/4) and unifies TableOut with the resulting table.
 p_hashtbl_get_default(Table, Key, Default, Value, Table1) :-
-    hashtbl_bucket(Table, Key, BucketIdx, Bucket),
+    hashtbl_bucket(Table, Key, BucketTerm, BucketIdx, Bucket),
     (   memberchk(Key-[Value|_], Bucket)
     ->  Table1 = Table
     ;   Value = Default,
         Bucket1 = [Key-[Value]|Bucket],
-        copy_term_idx_arg(Table, BucketIdx, Bucket1, Table1) ).
+        copy_term_idx_arg(BucketTerm, BucketIdx, Bucket1, BucketTerm1),
+        copy_term_idx_arg(Table, 2, BucketTerm1, Table1) ).
 
 %! p_hashtbl_delete(!Table, +Key, -TableOut) is det
 %
 %  Deletes the most recent value stored under Key in Table, if any. Does
 %  nothing otherwise; succeeds always.
 p_hashtbl_delete(Table, Key, Table1) :-
-    hashtbl_bucket(Table, Key, BucketIdx, Bucket),
+    hashtbl_bucket(Table, Key, BucketTerm, BucketIdx, Bucket),
     (   selectchk(Key-[_Old, Next | Rest], Bucket, Key-[Next|Rest], Bucket1)
     ->  true
     ;   selectchk(Key-[_Old], Bucket, Bucket1)
     ->  true
     ;   Bucket1 = Bucket ),
-    copy_term_idx_arg(Table, BucketIdx, Bucket1, Table1).
+    copy_term_idx_arg(BucketTerm, BucketIdx, Bucket1, BucketTerm1),
+    copy_term_idx_arg(Table, 2, BucketTerm1, Table1).
 
 %! p_hashtbl_enumerate(+Table, -Key, -Value) is nondet
 %
